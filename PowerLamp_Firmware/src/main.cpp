@@ -23,37 +23,52 @@ enum LightingMode {
   LIGHTING_MODE_SIZE
 };
 
-uint8_t globalPwmMin = 0;
-uint8_t globalPwmMax = 0;
-uint8_t globalPwmCurr = 0;
-uint8_t incr = 0;
+uint8_t gPwmMin = 0;
+uint8_t gPwmMax = 0;
+uint8_t gPwmCurr = 0;
+uint8_t incr = 1;
+uint8_t dir = 0;
 
 void setLinear(uint8_t y) {
-  globalPwmMin = y;
-  globalPwmMax = y;
-  globalPwmCurr = y; // should not, should move at set
+  gPwmMin = y;
+  gPwmMax = y;
+  gPwmCurr = y; // should not, should move at set
 }
 
 void setPulse(uint8_t min, uint8_t max, uint16_t periodMs) {
-  auto getPwmPerSec = [](uint8_t min, uint8_t max, uint16_t periodMs)
-  {
-    return (((max-min)*2) / (periodMs/1000));
-  };
-  if ((getPwmPerSec(min,max,periodMs)) < MIN_PWM_STEPS_PER_SEC) { return; }
-  globalPwmMin = min;
-  globalPwmMax = max;
-  incr = getPwmPerSec(min,max,periodMs) / MIN_PWM_STEPS_PER_SEC;
+  float div = (periodMs/1000);
+  uint16_t dist = (max-min)*2;
+  uint8_t pwmPerSec = dist / div;
+
+  if (pwmPerSec < MIN_PWM_STEPS_PER_SEC) { return; }
+  gPwmMin = min;
+  gPwmMax = max;
+  incr = pwmPerSec / MIN_PWM_STEPS_PER_SEC;
 }
 
 void run() {
   static unsigned long timer = 0;
   if(!SudoArduino::isTimeOut(timer,LIGHT_RUN_MS)) { return; }
   timer = millis();
-  analogWrite(LED_PWM_GPIO, globalPwmCurr);
-  if (globalPwmMin != globalPwmMax) {
-    (globalPwmCurr > globalPwmMin) ? (globalPwmCurr--) : (globalPwmCurr++) % globalPwmMax;
+  analogWrite(LED_PWM_GPIO, gPwmCurr);
+  if (gPwmMin != gPwmMax) {
+
+    if (dir == 1) {
+      if (gPwmCurr < gPwmMax) {
+        gPwmCurr += incr;
+      } else {
+        dir = 0;
+      }
+    } else if ((dir == 0)) {
+      if (gPwmCurr > gPwmMin) {
+        gPwmCurr -= incr;
+      } else {
+        dir = 1;
+      }
+    }
   }
 }
+
 tact tactSwitch = tact(TACT_GPIO);
 
 
@@ -67,7 +82,7 @@ int lightMode = NO_LIGHT;
 void loop() {
 
 
-  tactSwitch.poll([]{setPulse(globalPwmCurr>20?globalPwmCurr-20:0, globalPwmCurr, 200); }, 
+  tactSwitch.poll([]{gPwmCurr = gPwmCurr>20?gPwmCurr-20:0; setPulse(gPwmCurr+1, gPwmCurr+20, 200); }, 
                   []{lightMode++; lightMode % LIGHTING_MODE_SIZE; }, 
                   []{lightMode = NO_LIGHT; });
 
@@ -82,7 +97,7 @@ void loop() {
       break;
     case SLOW_PULSE:
     // setLinear(127);
-      setPulse(50, 200, 3);
+      setPulse(50, 200, 2000);
       break;
     case NO_LIGHT:
     default:
